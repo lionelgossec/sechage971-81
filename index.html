@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#2f2924"><meta name="description" content="Suivi des salaisons, séchages, recettes et pertes de poids."><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Charcut' Tracker V6.1</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f4f1ec;color:#27231f}
+header{background:#2f2924;color:white;padding:22px 18px}h1{margin:0 0 5px;font-size:26px}header p{margin:0;opacity:.8}
+main{max-width:1100px;margin:auto;padding:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.card{background:white;border-radius:16px;padding:16px;box-shadow:0 2px 10px #0001;margin-bottom:14px}
+label{display:block;font-size:13px;font-weight:650;margin:10px 0 4px}input,select,textarea,button{width:100%;box-sizing:border-box;padding:10px;border:1px solid #d8d0c8;border-radius:9px;font:inherit}textarea{min-height:80px}
+button{background:#6b4f3a;color:white;border:0;font-weight:700;cursor:pointer;margin-top:12px}button.secondary{background:#eee7e0;color:#332b25}
+.actions{display:flex;gap:8px}.actions button{flex:1}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}th,td{text-align:left;padding:8px;border-bottom:1px solid #eee}
+.badge{display:inline-block;padding:4px 8px;border-radius:20px;background:#eee7e0;font-size:12px}.big{font-size:28px;font-weight:800}.muted{color:#766e67}.danger{color:#a13b30}.ok{color:#26704a}.hidden{display:none}
+canvas{width:100%;height:220px;border:1px solid #eee;border-radius:10px}.tabs{display:flex;gap:8px;margin:0 0 14px;overflow:auto}.tabs button{white-space:nowrap;width:auto;padding:9px 14px}.tabs button.active{background:#2f2924}
+.recipe{border:1px solid #e5ddd5;border-radius:12px;padding:12px;margin:8px 0}.recipe h4{margin:0 0 6px}.notice{background:#f8f3e8;border-left:4px solid #9a7047;padding:10px;border-radius:6px;font-size:13px}.notify{background:#eee7e0;border-left:4px solid #6b4f3a;padding:10px;border-radius:6px;font-size:13px}.notify.ok{border-left-color:#26704a}.notify.warn{border-left-color:#9a7047}
+@media(max-width:700px){.row{grid-template-columns:1fr}.grid{grid-template-columns:1fr!important}table{font-size:12px}}
+
+.toast{
+  position:fixed;
+  left:50%;
+  bottom:24px;
+  transform:translate(-50%,20px);
+  background:#18352b;
+  color:#fff;
+  padding:12px 18px;
+  border-radius:12px;
+  box-shadow:0 8px 30px rgba(0,0,0,.22);
+  font-weight:700;
+  z-index:9999;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s ease,transform .2s ease;
+  max-width:calc(100vw - 32px);
+  text-align:center;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body><div id="toast" class="toast" role="status" aria-live="polite"></div>
+<header><h1>🥩 Charcut' Tracker</h1><p>Suivi des salaisons, séchages, recettes, pesées et objectifs</p></header>
+<main>
+<div class="tabs">
+<button id="tabDash" class="active" onclick="showTab('dash')">📊 Tableau de bord</button>
+<button id="tabPieces" onclick="showTab('pieces')">🥩 Toutes les pièces</button>
+<button id="tabNew" onclick="showTab('new')">➕ Nouvelle pièce</button>
+<button id="tabRecipes" onclick="showTab('recipes')">🧂 Mes recettes</button>
+<button id="tabSafety" onclick="showTab('safety')">ℹ️ Sécurité</button>
+</div>
+
+<section id="dash">
+<div class="card"><h2>⏰ Rappels & notifications</h2><div id="notificationStatus" class="notify warn">Les notifications ne sont pas encore activées.</div><button class="secondary" onclick="requestNotifications()">🔔 Activer les notifications sur cet appareil</button><div class="muted" style="margin-top:8px">V6.3 locale : les notifications navigateur sont préparées ici. Le Push Web qui fonctionnera même application fermée sera ajouté à l'étape suivante.</div><div id="reminders" class="muted" style="margin-top:10px">Aucune échéance.</div></div>
+<div class="card"><h2>Mes pièces <span id="pieceCount" class="badge">0</span></h2>
+<div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+<div class="notice"><b id="statActive">0</b><br><span class="muted">En cours</span></div>
+<div class="notice"><b id="statSalting">0</b><br><span class="muted">Salaison</span></div>
+<div class="notice"><b id="statDrying">0</b><br><span class="muted">Séchage</span></div>
+<div class="notice"><b id="statDone">0</b><br><span class="muted">Terminées</span></div>
+</div>
+<div class="row">
+<div><label>Rechercher une pièce</label><input id="pieceSearch" placeholder="Nom, type..." oninput="render()"></div>
+<div><label>Filtrer</label><select id="pieceFilter" onchange="render()"><option value="active">En cours</option><option value="salting">🧂 Salaison</option><option value="drying">🌬️ Séchage</option><option value="all">Toutes</option><option value="done">✅ Terminées</option></select></div>
+</div>
+<div id="dashboard" class="muted">Aucune pièce enregistrée.</div>
+<div class="notice" style="margin-top:12px">💾 <b>Les données sont conservées dans le navigateur de cet appareil.</b> Utilise régulièrement « Exporter les données » pour créer une sauvegarde externe, surtout avant de changer de téléphone ou de navigateur.</div>
+<div class="actions"><button class="secondary" onclick="exportData()">Exporter les données</button><button class="secondary" onclick="document.getElementById('importFile').click()">Importer</button></div>
+<input id="importFile" type="file" accept=".json" class="hidden" onchange="importData(event)"></div>
+</section>
+
+<section id="pieces" class="hidden">
+<div class="card">
+  <div class="actions">
+    <button class="secondary" onclick="showTab('dash')">← Retour au tableau de bord</button>
+    <button onclick="showTab('new')">➕ Nouvelle pièce</button>
+  </div>
+  <h2>🥩 Toutes les pièces</h2>
+  <p class="muted">Retrouve ici les pièces en cours et les pièces terminées.</p>
+  <div id="allPieces" class="muted">Aucune pièce enregistrée.</div>
+</div>
+</section>
+
+<section id="detail" class="hidden"></section>
+
+<section id="new" class="hidden">
+<div class="card"><h2>Nouvelle pièce</h2>
+<div class="row"><div><label>Nom</label><input id="name" placeholder="Coppa #01"></div><div><label>Type</label><select id="type"><option>Magret</option><option>Coppa</option><option>Filet mignon</option><option>Bœuf</option><option>Autre</option></select></div></div>
+<div class="row"><div><label>Poids initial (g)</label><input id="weight" type="number" min="1"></div><div><label>Date de départ</label><input id="date" type="date"></div></div>
+
+<div class="card" style="margin:14px 0 0">
+<h3>🧂 Protocole de salaison</h3>
+<div class="row">
+  <div><label>Méthode</label><select id="method"><option>Sous vide</option><option>Salaison sèche / enfouissement</option><option>Autre</option></select></div>
+  <div><label>Épaisseur maximale (cm)</label><input id="saltThickness" type="number" min="0" step=".1" placeholder="Ex. 5"></div>
+</div>
+<div class="notice">
+  <b>🧮 Calcul de salaison</b><br>
+  Utilise ton calculateur habituel puis reporte ici le résultat du protocole retenu.
+  <br><a href="https://frenchsmoker.fr/" target="_blank" rel="noopener">→ Ouvrir les calculateurs French Smoker</a>
+</div>
+<label>Résultat / protocole retenu</label>
+<textarea id="saltProtocol" rows="4" placeholder="Durée calculée, quantités utilisées, composition de la saumure, source, observations…"></textarea>
+<div class="row">
+  <div><label>Durée prévue (jours)</label><input id="duration" type="number" min="1" placeholder="Ex. 10"></div>
+  <div><label>Deadline / date de fin</label><input id="deadline" type="date"></div>
+</div>
+<div class="notice">Tu peux saisir soit une durée, soit directement une deadline. Si tu saisis les deux, la deadline calculée depuis la durée est proposée.</div>
+</div>
+
+<div class="row"><div><label>Rappel de pesée (jours)</label><input id="weighInterval" type="number" min="1" value="7" placeholder="Ex. 7"></div><div><label>Première pesée prévue</label><input id="firstWeighDate" type="date"></div></div>
+<label>Objectif de séchage (% de perte après salaison)</label><input id="dryTarget" type="number" min="0" max="99" step=".1" placeholder="Ex. 30">
+<label>Notes générales</label><textarea id="notes" placeholder="Observations ou informations complémentaires…"></textarea>
+<div class="notice">L'objectif de perte est un indicateur de suivi, pas une validation sanitaire à lui seul.</div>
+<div class="notify ok">💾 En appuyant sur « Enregistrer la pièce », la pièce et ses informations sont immédiatement enregistrées dans les données locales de l'application.</div>
+<button onclick="addPiece()">💾 Enregistrer la pièce</button></div>
+</section>
+
+<section id="recipes" class="hidden"><div class="card"><h2>Mes recettes</h2><p class="muted">Enregistre ici tes recettes d'assaisonnement. Les quantités peuvent être exprimées en g/kg de viande pour être recalculées.</p>
+<div class="row"><div><label>Nom</label><input id="rname" placeholder="Magret au poivre"></div><div><label>Type</label><input id="rtype" placeholder="Magret / Coppa..."></div></div>
+<label>Ingrédients et quantités</label><textarea id="ring" placeholder="Sel : ... g/kg&#10;Sucre : ... g/kg&#10;Poivre : ... g/kg&#10;Cognac : ..."></textarea>
+<label>Notes / source</label><textarea id="rnotes" placeholder="Source de la recette ou remarques"></textarea>
+<button onclick="addRecipe()">Enregistrer la recette</button><div id="recipeList"></div></div></section>
+
+<section id="safety" class="hidden"><div class="card"><h2>🛡️ Sécurité & protocoles</h2>
+<div class="notice"><b>Important :</b> l'application ne certifie pas qu'une viande séchée est sûre à consommer. Pour les quantités de sel, sels nitrités/nitrates, températures, humidité, durées et autres paramètres critiques, utilise un protocole fiable et vérifie sa source.</div>
+<p>Le Ministère de l'Agriculture rappelle que les produits de salaison peuvent présenter des risques microbiologiques et que les nitrites/nitrates ont notamment un rôle dans la maîtrise de certains dangers.</p>
+<p>Pour les bonnes pratiques générales à domicile, consulte les recommandations officielles du Ministère de l'Agriculture.</p>
+<p><a href="https://agriculture.gouv.fr/cuisine-domicile-les-bons-gestes-dhygiene" target="_blank" rel="noopener">→ Bonnes pratiques d'hygiène à domicile</a></p>
+<p><a href="https://agriculture.gouv.fr/nitrites-nitrates-et-alimentation-questions-et-reponses" target="_blank" rel="noopener">→ Nitrites/nitrates : informations officielles</a></p>
+</div></section>
+</main>
+<script>
+let pieces=JSON.parse(localStorage.getItem('charcutPieces')||'[]');
+let recipes=JSON.parse(localStorage.getItem('charcutRecipes')||'[]');
+const $=id=>document.getElementById(id);
+const today=()=>new Date().toISOString().slice(0,10);
+
+function addDays(dateStr,days){
+  if(!dateStr||days===null||days===undefined)return null;
+  let d=new Date(dateStr+'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate()+Number(days));
+  return d.toISOString().slice(0,10);
+}
+function formatDate(d){if(!d)return '—';return new Date(d+'T00:00:00Z').toLocaleDateString('fr-FR')}
+function daysBetween(a,b){
+  if(!a||!b)return null;
+  let x=new Date(a+'T00:00:00Z'),y=new Date(b+'T00:00:00Z');
+  return Math.round((y-x)/86400000);
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+let toastTimer=null;
+function showToast(message){
+  const el=$('toast');
+  if(!el)return;
+  el.textContent=message;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2200);
+}
+function save(message){
+  localStorage.setItem('charcutPieces',JSON.stringify(pieces));
+  localStorage.setItem('charcutRecipes',JSON.stringify(recipes));
+  render();renderRecipes();populateRecipes();
+  if(message)showToast(message);
+}
+function normalizePiece(p){
+  p.saltThickness=p.saltThickness||null;
+  p.saltProtocol=p.saltProtocol||'';
+  p.recipeId=p.recipeId||null;
+  p.season=p.season||'';
+  p.weighings=Array.isArray(p.weighings)&&p.weighings.length?p.weighings:[{date:p.date||today(),weight:Number(p.weight)||0}];
+  p.weighIntervalDays=Math.max(1,Number(p.weighIntervalDays)||7);
+  p.notificationLog=p.notificationLog||{};
+  if(!p.nextWeighingDate)p.nextWeighingDate=addDays(p.weighings.at(-1)?.date||p.date,p.weighIntervalDays);
+  if(p.dryingStarted===undefined)p.dryingStarted=!!p.dryingStartWeight;
+  p.completed=!!p.completed;
+  return p;
+}
+pieces=pieces.map(normalizePiece);
+
+$('date').value=today();
+$('firstWeighDate').value='';
+
+function notificationSupported(){return 'Notification' in window}
+async function requestNotifications(){
+  if(!notificationSupported()){
+    alert('Les notifications ne sont pas prises en charge par ce navigateur.');
+    return;
+  }
+  try{
+    let permission=await Notification.requestPermission();
+    updateNotificationStatus();
+    if(permission==='granted'){
+      checkNotifications(true);
+      new Notification("Charcut' Tracker",{body:'🔔 Notifications activées sur cet appareil.',icon:'./icon.svg',tag:'charcut-test'});
+    }
+  }catch(e){alert('Impossible d’activer les notifications dans ce navigateur.')}
+}
+function updateNotificationStatus(){
+  let el=$('notificationStatus');if(!el)return;
+  if(!notificationSupported()){
+    el.className='notify warn';el.textContent='Les notifications ne sont pas prises en charge par ce navigateur.';return;
+  }
+  if(Notification.permission==='granted'){
+    el.className='notify ok';el.textContent='🔔 Notifications navigateur activées sur cet appareil.';
+  }else if(Notification.permission==='denied'){
+    el.className='notify warn';el.textContent='🔕 Notifications bloquées. Autorise-les dans les réglages du navigateur.';
+  }else{
+    el.className='notify warn';el.textContent='Les notifications ne sont pas encore activées.';
+  }
+}
+function notifyOnce(p,type,date,message){
+  p.notificationLog=p.notificationLog||{};
+  let key=type+'_'+date;
+  if(p.notificationLog[key])return false;
+  if(notificationSupported()&&Notification.permission==='granted'){
+    try{
+      new Notification("Charcut' Tracker",{body:message,icon:'./icon.svg',tag:key});
+      p.notificationLog[key]=new Date().toISOString();
+      return true;
+    }catch(e){return false}
+  }
+  return false;
+}
+function checkNotifications(){
+  updateNotificationStatus();
+  let now=today(),changed=false;
+  for(const p of pieces){
+    normalizePiece(p);
+    if(p.completed)continue;
+    if(p.deadline&&!p.dryingStarted&&now>=p.deadline){
+      let msg=now===p.deadline
+        ?`🧂 ${p.name} arrive à la fin prévue de sa salaison aujourd’hui.`
+        :`🧂 ${p.name} a dépassé sa date de fin de salaison (${formatDate(p.deadline)}).`;
+      if(notifyOnce(p,'salting',p.deadline,msg))changed=true;
+    }
+    if(p.nextWeighingDate&&now>=p.nextWeighingDate){
+      let msg=now===p.nextWeighingDate
+        ?`⚖️ C’est le moment de peser ${p.name}.`
+        :`⚖️ La pesée de ${p.name} est en retard depuis le ${formatDate(p.nextWeighingDate)}.`;
+      if(notifyOnce(p,'weighing',p.nextWeighingDate,msg))changed=true;
+    }
+  }
+  if(changed)localStorage.setItem('charcutPieces',JSON.stringify(pieces));
+}
+function showTab(tab){
+  ['dash','pieces','new','recipes','safety','detail'].forEach(x=>{
+    const el=$(x);
+    if(el)el.classList.toggle('hidden',x!==tab);
+  });
+  ['tabDash','tabPieces','tabNew','tabRecipes','tabSafety'].forEach(x=>{
+    const el=$(x);if(el)el.classList.remove('active');
+  });
+  const map={dash:'tabDash',pieces:'tabPieces',new:'tabNew',recipes:'tabRecipes',safety:'tabSafety'};
+  if(map[tab]&&$(map[tab]))$(map[tab]).classList.add('active');
+  if(tab==='pieces')renderAllPieces();
+  if(tab==='dash')render();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function addPiece(){
+  const w=+$('weight').value;
+  if(!w)return alert('Indique le poids initial.');
+  const startDate=$('date').value||today();
+  const name=$('name').value.trim()||$('type').value+' #'+(pieces.length+1);
+  let rec=recipes.find(r=>String(r.id)===$('recipe').value);
+  let duration=Math.max(0,+$('duration').value||0);
+  let deadline=$('deadline').value;
+  if(duration&&!deadline)deadline=addDays(startDate,duration);
+  const weighInterval=Math.max(1,+$('weighInterval').value||7);
+  const firstWeigh=$('firstWeighDate').value||addDays(startDate,weighInterval);
+  const p=normalizePiece({
+    id:Date.now(),
+    name,type:$('type').value,weight:w,date:startDate,
+    method:$('method').value,recipeId:null,
+    season:'',
+    saltThickness:+$('saltThickness').value||null,
+    saltProtocol:$('saltProtocol').value.trim(),
+    dryTarget:+$('dryTarget').value||null,
+    notes:$('notes').value,duration:duration||null,deadline:deadline||null,
+    weighIntervalDays:weighInterval,nextWeighingDate:firstWeigh,
+    weighings:[{date:startDate,weight:w}],notificationLog:{},
+    dryingStarted:false,completed:false
+  });
+  pieces.unshift(p);save('✅ Pièce enregistrée');openPiece(p.id);showTab('dash');
+  ['name','weight','saltThickness','saltProtocol','dryTarget','notes','duration','deadline','weighInterval','firstWeighDate'].forEach(x=>$(x).value='');
+  $('weighInterval').value=7;$('date').value=today();
+}
+function baseDryWeight(p){return p.dryingStartWeight||null}
+function pct(p,w){
+  let base=baseDryWeight(p);
+  return base?100*(1-w/base):0;
+}
+function reminderText(p){
+  if(p.completed)return '<span class="ok">✅ Terminée</span>';
+  if(!p.deadline)return '<span class="muted">Pas de deadline</span>';
+  let n=daysBetween(today(),p.deadline);
+  if(n<0)return `<span class="danger">🔴 Dépassée de ${Math.abs(n)} j — ${formatDate(p.deadline)}</span>`;
+  if(n===0)return `<span class="danger">🔴 Aujourd’hui — ${formatDate(p.deadline)}</span>`;
+  if(n<=2)return `<span class="danger">🟠 Dans ${n} j — ${formatDate(p.deadline)}</span>`;
+  if(n<=5)return `<span>🟡 Dans ${n} j — ${formatDate(p.deadline)}</span>`;
+  return `<span class="ok">🟢 ${formatDate(p.deadline)} — dans ${n} j</span>`;
+}
+function stageOf(p){
+  if(p.completed)return 'done';
+  return p.dryingStarted?'drying':'salting';
+}
+function render(){
+  pieces.forEach(normalizePiece);
+  let active=pieces.filter(p=>!p.completed);
+  $('statActive').textContent=active.length;
+  $('statSalting').textContent=active.filter(p=>stageOf(p)==='salting').length;
+  $('statDrying').textContent=active.filter(p=>stageOf(p)==='drying').length;
+  $('statDone').textContent=pieces.filter(p=>p.completed).length;
+  $('pieceCount').textContent=pieces.length+' pièce'+(pieces.length>1?'s':'');
+
+  let reminders=[];
+  pieces.forEach(p=>{
+    if(p.completed)return;
+    if(p.deadline&&!p.dryingStarted)reminders.push({date:p.deadline,html:`<b>${esc(p.name)}</b> — ${reminderText(p)}<br><small class="muted">Fin de salaison</small>`});
+    if(p.nextWeighingDate)reminders.push({date:p.nextWeighingDate,html:`<b>${esc(p.name)}</b> — ⚖️ ${formatDate(p.nextWeighingDate)}<br><small class="muted">Prochaine pesée — tous les ${p.weighIntervalDays} j</small>`});
+  });
+  reminders.sort((a,b)=>a.date.localeCompare(b.date));
+  $('reminders').innerHTML=reminders.length
+    ?reminders.slice(0,10).map(r=>`<div style="padding:8px 0;border-bottom:1px solid #eee">${r.html}</div>`).join('')
+    :'<span class="muted">Aucune échéance enregistrée.</span>';
+
+  let search=($('pieceSearch')?.value||'').trim().toLowerCase();
+  let filter=$('pieceFilter')?.value||'active';
+  let visible=pieces.filter(p=>{
+    let text=(p.name+' '+p.type).toLowerCase();
+    const matchesSearch=!search||text.includes(search);
+    const matchesFilter=filter==='active'?!p.completed:(filter==='all'||stageOf(p)===filter);
+    return matchesSearch&&matchesFilter;
+  });
+  if(!pieces.length){$('dashboard').innerHTML='<span class="muted">Aucune pièce enregistrée.</span>';return}
+  if(!visible.length){$('dashboard').innerHTML='<span class="muted">Aucune pièce ne correspond au filtre.</span>';return}
+
+  $('dashboard').innerHTML='<table><tr><th>Pièce</th><th>Départ</th><th>Actuel</th><th>Séchage</th><th>Étape</th><th>Prochain rappel</th><th></th></tr>'+
+    visible.map(p=>{
+      let w=p.weighings.at(-1).weight;
+      let loss=p.dryingStarted?pct(p,w):null;
+      let stage=p.completed?'✅ Terminée':p.dryingStarted?'🌬️ Séchage':'🧂 Salaison';
+      let next=p.completed?'—':(p.dryingStarted?p.nextWeighingDate:p.deadline);
+      let reminderLabel=p.completed?'':(p.dryingStarted?'Pesée':'Fin salaison');
+      return `<tr><td><b>${esc(p.name)}</b><br><span class="badge">${esc(p.type)}</span></td>
+      <td>${p.weight} g</td><td>${w} g</td><td>${loss===null?'—':loss.toFixed(1)+' %'}</td>
+      <td>${stage}</td><td>${next?formatDate(next):'—'}<br><small>${reminderLabel}</small></td>
+      <td><button onclick="openPiece(${p.id})">Ouvrir</button></td></tr>`;
+    }).join('')+'</table>';
+}
+function openPiece(id){
+  const p=pieces.find(x=>x.id===id);if(!p)return;normalizePiece(p);
+  let w=p.weighings.at(-1).weight;
+  let loss=p.dryingStarted?pct(p,w):null;
+  let targetW=p.dryingStartWeight&&p.dryTarget?p.dryingStartWeight*(1-p.dryTarget/100):null;
+  let sorted=[...p.weighings].sort((a,b)=>a.date.localeCompare(b.date));
+  let recipe=recipes.find(r=>String(r.id)===String(p.recipeId));
+  $('detail').innerHTML=`<div class="card">
+  <div class="actions">
+    <button class="secondary" onclick="showTab('dash')">← Retour au tableau de bord</button>
+    <button class="secondary" onclick="showTab('pieces')">🥩 Toutes les pièces</button>
+  </div>
+  <h2>${esc(p.name)} <span class="badge">${esc(p.type)}</span> ${p.completed?'<span class="badge">✅ Terminée</span>':''}</h2>
+  <div class="grid"><div><div class="big">${w} g</div><div class="muted">poids actuel</div></div>
+  <div><div class="big">${loss===null?'—':loss.toFixed(1)+' %'}</div><div class="muted">perte depuis le début du séchage</div></div></div>
+  <p><b>🧂 Salaison :</b> ${esc(p.method)}<br><b>Début :</b> ${formatDate(p.date)}<br>
+  <b>Épaisseur :</b> ${p.saltThickness?p.saltThickness+' cm':'—'}<br>
+  <b>Durée prévue :</b> ${p.duration?p.duration+' jours':'—'}<br><b>Sortie prévue :</b> ${p.deadline?formatDate(p.deadline):'—'}<br>
+  <b>Rappel actuel :</b> ${p.completed?'—':p.dryingStarted?(p.nextWeighingDate?'⚖️ Prochaine pesée le '+formatDate(p.nextWeighingDate):'⚖️ Pesée à programmer'):(p.deadline?'🧂 Fin de salaison le '+formatDate(p.deadline):'—')}<br>
+  <b>Recette / assaisonnement :</b> ${esc(recipe?.name||'Libre')}</p>
+  ${p.saltProtocol?`<div class="notice"><b>📝 Protocole retenu</b><br>${esc(p.saltProtocol).replace(/\n/g,'<br>')}</div>`:''}
+  ${!p.dryingStarted&&!p.completed?`<div class="notice"><b>🧂 Salaison en cours</b><br>La pesée n'est pas proposée à cette étape. Au moment de sortir la pièce, tu saisiras son poids réel pour démarrer le séchage.</div>`:''}
+  <div class="notice"><b>🌬️ Séchage</b><br>Poids de référence : ${p.dryingStartWeight?p.dryingStartWeight+' g':'pas encore défini'}<br>
+  Objectif : ${p.dryTarget?p.dryTarget+' % de perte':'à définir'}<br>
+  Poids cible : ${targetW?targetW.toFixed(0)+' g':'—'}${targetW&&loss>=p.dryTarget?' — 🎯 Objectif atteint':''}</div>
+  <div class="row"><div><label>Modifier la durée de salaison (jours)</label><input id="editDuration" type="number" min="1" value="${p.duration||''}"></div>
+  <div><label>Modifier la deadline de salaison</label><input id="editDeadline" type="date" value="${p.deadline||''}"></div></div>
+  ${p.dryingStarted&&!p.completed?`<div class="row"><div><label>Intervalle de pesée (jours)</label><input id="editWeighInterval" type="number" min="1" value="${p.weighIntervalDays}"></div>
+  <div><label>Prochaine pesée</label><input id="editNextWeigh" type="date" value="${p.nextWeighingDate||''}"></div></div>`:''}
+  <button class="secondary" onclick="updatePieceSettings(${p.id})">Mettre à jour les échéances</button>
+  ${p.completed
+    ?'<button class="secondary" onclick="reopenPiece('+p.id+')">↩️ Réouvrir la pièce</button>'
+    :!p.dryingStarted
+      ?`<div class="card" style="margin-top:12px">
+          <h3>🌿 Assaisonnement — à la sortie de salaison</h3>
+          <label>Recette</label><select id="exitRecipe">${'<option value="">— assaisonnement libre —</option>'}${recipes.map(r=>`<option value="${r.id}" ${String(r.id)===String(p.recipeId)?'selected':''}>${esc(r.name)}</option>`).join('')}</select>
+          <label>Assaisonnement / finition</label><textarea id="exitSeason" rows="3" placeholder="Épices, herbes, alcool, finition…">${esc(p.season)}</textarea>
+          <button onclick="startDrying(${p.id})">🌬️ Sortir de salaison, enregistrer le poids et démarrer le séchage</button>
+        </div>`
+      :'<button class="secondary" onclick="markDryingDone('+p.id+')">🔄 Refaire la référence de séchage avec la dernière pesée</button>'}
+  ${!p.completed&&targetW&&loss>=p.dryTarget?`<button onclick="completePiece(${p.id})">✅ Marquer la pièce comme terminée</button>`:''}
+  ${!p.completed&&p.dryingStarted?`<h3>Nouvelle pesée</h3><p class="notify">⚖️ Prochaine pesée : <b>${p.nextWeighingDate?formatDate(p.nextWeighingDate):'—'}</b>.</p>
+  <div class="row"><div><label>Date</label><input id="wd" type="date" value="${today()}"></div><div><label>Poids (g)</label><input id="ww" type="number" min="1"></div></div>
+  <button onclick="weigh(${p.id})">💾 Enregistrer la pesée</button>`:''}
+  <h3>Courbe de poids</h3><canvas id="chart" width="900" height="240"></canvas>
+  <h3>Historique</h3><table><tr><th>Date</th><th>Poids</th><th>Perte séchage</th></tr>
+  ${sorted.slice().reverse().map(x=>`<tr><td>${formatDate(x.date)}</td><td>${x.weight} g</td><td>${p.dryingStarted?pct(p,x.weight).toFixed(1)+' %':'—'}</td></tr>`).join('')}</table>
+  <h3>Assaisonnement</h3><p>${esc(p.season)||'—'}</p><p class="muted">${esc(p.notes)||''}</p>
+  <button class="secondary" onclick="deletePiece(${p.id})">🗑️ Supprimer la pièce</button>
+  </div>`;
+  showTab('detail');
+  drawChart(p);
+}
+
+function drawChart(p){
+  const c=$('chart'),ctx=c.getContext('2d'),W=c.width,H=c.height,pad=45;
+  ctx.clearRect(0,0,W,H);
+  let a=[...p.weighings].sort((x,y)=>x.date.localeCompare(y.date));
+  if(a.length<2){ctx.font='16px system-ui';ctx.fillText('Ajoute au moins une deuxième pesée pour afficher la courbe.',pad,100);return}
+  let vals=a.map(x=>x.weight),min=Math.min(...vals),max=Math.max(...vals);if(min===max){min-=1;max+=1}
+  ctx.beginPath();
+  a.forEach((x,i)=>{let xx=pad+i*(W-2*pad)/(a.length-1),yy=H-pad-(x.weight-min)/(max-min)*(H-2*pad);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});
+  ctx.stroke();
+  ctx.font='12px system-ui';ctx.fillText(max.toFixed(0)+' g',5,pad);ctx.fillText(min.toFixed(0)+' g',5,H-pad);
+  ctx.fillText(a[0].date,pad,H-12);ctx.fillText(a.at(-1).date,W-100,H-12);
+}
+function updatePieceSettings(id){
+  let p=pieces.find(x=>x.id===id);if(!p)return;
+  let dur=Math.max(0,+$('editDuration').value||0),dl=$('editDeadline').value;
+  if(dur&&!dl)dl=addDays(p.date,dur);
+  p.duration=dur||null;p.deadline=dl||null;
+  if(p.dryingStarted){
+    p.weighIntervalDays=Math.max(1,+$('editWeighInterval').value||7);
+    p.nextWeighingDate=$('editNextWeigh').value||addDays(p.weighings.at(-1).date,p.weighIntervalDays);
+  }
+  p.notificationLog=p.notificationLog||{};
+  save('✅ Modifications enregistrées');openPiece(id);
+}
+function weigh(id){
+  let p=pieces.find(x=>x.id===id),w=+$('ww').value,date=$('wd').value||today();
+  if(!w)return alert('Indique le poids.');
+  if(!date)return alert('Indique la date de pesée.');
+  p.weighings.push({date,weight:w});
+  p.weighIntervalDays=Math.max(1,p.weighIntervalDays||7);
+  p.nextWeighingDate=addDays(date,p.weighIntervalDays);
+  p.notificationLog=p.notificationLog||{};
+  save('✅ Pesée enregistrée');openPiece(id);
+}
+function startDrying(id){
+  let p=pieces.find(x=>x.id===id);if(!p)return;
+  const exitRecipe=$('exitRecipe')?.value||'';
+  const exitSeason=$('exitSeason')?.value?.trim()||'';
+  p.recipeId=exitRecipe||null;
+  p.season=exitSeason;
+  let current=p.weighings.at(-1)?.weight||p.weight;
+  let w=prompt('Poids réel à la sortie de salaison (g) :',current);
+  if(w===null)return;
+  w=Number(w);if(!w||w<=0)return alert('Indique un poids de sortie valide.');
+  let date=prompt('Date de sortie de salaison (AAAA-MM-JJ) :',today());
+  if(!date)return;
+  p.weighings.push({date,weight:w});
+  p.dryingStartWeight=w;p.dryingStartDate=date;p.dryingStarted=true;
+  p.weighIntervalDays=Math.max(1,p.weighIntervalDays||7);
+  p.nextWeighingDate=addDays(date,p.weighIntervalDays);
+  p.notificationLog=p.notificationLog||{};
+  save('✅ Sortie de salaison enregistrée');openPiece(id);
+}
+
+function markDryingDone(id){
+  let p=pieces.find(x=>x.id===id),w=p.weighings.at(-1).weight,date=p.weighings.at(-1).date;
+  p.dryingStartWeight=w;p.dryingStartDate=date;p.dryingStarted=true;
+  p.weighIntervalDays=Math.max(1,p.weighIntervalDays||7);
+  p.nextWeighingDate=p.nextWeighingDate||addDays(date,p.weighIntervalDays);
+  save('✅ Séchage mis à jour');openPiece(id);
+}
+
+function completePiece(id){
+  let p=pieces.find(x=>x.id===id);if(!p)return;
+  p.completed=true;p.completedDate=today();p.nextWeighingDate=null;
+  save('✅ Pièce terminée');openPiece(id);
+}
+function reopenPiece(id){
+  let p=pieces.find(x=>x.id===id);if(!p)return;
+  p.completed=false;p.completedDate=null;
+  p.nextWeighingDate=p.nextWeighingDate||addDays(p.weighings.at(-1).date,p.weighIntervalDays||7);
+  save('✅ Pièce réouverte');openPiece(id);
+}
+function deletePiece(id){
+  if(confirm('Supprimer cette pièce et tout son historique ?')){
+    pieces=pieces.filter(p=>p.id!==id);save('✅ Pièce supprimée');showTab('dash');
+  }
+}
+function renderAllPieces(){
+  const box=$('allPieces');
+  if(!pieces.length){box.innerHTML='<span class="muted">Aucune pièce enregistrée.</span>';return}
+  const visible=[...pieces].sort((a,b)=>Number(b.id)-Number(a.id));
+  box.innerHTML='<table><tr><th>Pièce</th><th>Étape</th><th>Poids actuel</th><th>Dernier rappel</th><th></th></tr>'+
+    visible.map(p=>{
+      normalizePiece(p);
+      const w=p.weighings.at(-1).weight;
+      const stage=p.completed?'✅ Terminée':p.dryingStarted?'🌬️ Séchage':'🧂 Salaison';
+      const next=p.completed?'—':p.dryingStarted?(p.nextWeighingDate?formatDate(p.nextWeighingDate):'—'):(p.deadline?formatDate(p.deadline):'—');
+      return `<tr><td><b>${esc(p.name)}</b><br><span class="badge">${esc(p.type)}</span></td><td>${stage}</td><td>${w} g</td><td>${next}</td><td><button onclick="openPiece(${p.id})">Ouvrir</button></td></tr>`;
+    }).join('')+'</table>';
+}
+function addRecipe(){
+  let n=$('rname').value.trim();if(!n)return alert('Indique un nom.');
+  recipes.unshift({id:Date.now(),name:n,type:$('rtype').value.trim(),ingredients:$('ring').value,notes:$('rnotes').value});
+  save('✅ Recette enregistrée');['rname','rtype','ring','rnotes'].forEach(x=>$(x).value='')
+}
+function renderRecipes(){
+  $('recipeList').innerHTML=recipes.length?recipes.map(r=>`<div class="recipe"><h4>${esc(r.name)} <span class="badge">${esc(r.type||'')}</span></h4>
+  <div>${esc(r.ingredients).replace(/\n/g,'<br>')}</div><small class="muted">${esc(r.notes)}</small>
+  <button class="secondary" onclick="deleteRecipe(${r.id})">Supprimer</button></div>`).join(''):'<p class="muted">Aucune recette.</p>';
+}
+function deleteRecipe(id){
+  let used=pieces.some(p=>String(p.recipeId)===String(id));
+  let msg=used?'Cette recette est utilisée par une ou plusieurs pièces. La supprimer la laissera dans leur historique sous forme de texte libre. Continuer ?':'Supprimer cette recette ?';
+  if(confirm(msg)){recipes=recipes.filter(r=>r.id!==id);save('✅ Recette supprimée')}
+}
+function populateRecipes(){
+  $('recipe').innerHTML='<option value="">— recette libre —</option>'+recipes.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('');
+}
+function exportData(){
+  let data={pieces,recipes,version:6.2,exportedAt:new Date().toISOString()};
+  let b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  let a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='charcut-tracker-sauvegarde-v6.json';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function importData(e){
+  let f=e.target.files[0];if(!f)return;
+  let r=new FileReader();
+  r.onload=()=>{
+    try{
+      let d=JSON.parse(r.result);
+      if(!Array.isArray(d.pieces)||!Array.isArray(d.recipes))throw new Error('structure');
+      pieces=d.pieces.map(normalizePiece);recipes=d.recipes;
+      save();alert('Import réussi. Les pièces et recettes ont été restaurées.');
+    }catch{alert('Fichier invalide ou structure non reconnue.')}
+    e.target.value='';
+  };
+  r.readAsText(f);
+}
+render();renderRecipes();populateRecipes();updateNotificationStatus();checkNotifications();
+setInterval(checkNotifications,60000);
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script></body></html>
