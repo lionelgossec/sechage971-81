@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#2f2924"><meta name="description" content="Suivi des salaisons, séchages, recettes et pertes de poids."><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml">
-<title>Charcut' Tracker V6.1</title>
+<title>Charcut' Tracker V6.4</title>
 <style>
 body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f4f1ec;color:#27231f}
 header{background:#2f2924;color:white;padding:22px 18px}h1{margin:0 0 5px;font-size:26px}header p{margin:0;opacity:.8}
@@ -40,7 +40,7 @@ canvas{width:100%;height:220px;border:1px solid #eee;border-radius:10px}.tabs{di
 </style>
 </head>
 <body><div id="toast" class="toast" role="status" aria-live="polite"></div>
-<header><h1>🥩 Charcut' Tracker</h1><p>Suivi des salaisons, séchages, recettes, pesées et objectifs</p></header>
+<header><h1>🥩 Charcut' Tracker</h1><p>Suivi des salaisons, séchages, recettes, pesées, rappels et objectifs</p></header>
 <main>
 <div class="tabs">
 <button id="tabDash" class="active" onclick="showTab('dash')">📊 Tableau de bord</button>
@@ -51,7 +51,7 @@ canvas{width:100%;height:220px;border:1px solid #eee;border-radius:10px}.tabs{di
 </div>
 
 <section id="dash">
-<div class="card"><h2>⏰ Rappels & notifications</h2><div id="notificationStatus" class="notify warn">Les notifications ne sont pas encore activées.</div><button class="secondary" onclick="requestNotifications()">🔔 Activer les notifications sur cet appareil</button><div class="muted" style="margin-top:8px">V6.3 locale : les notifications navigateur sont préparées ici. Le Push Web qui fonctionnera même application fermée sera ajouté à l'étape suivante.</div><div id="reminders" class="muted" style="margin-top:10px">Aucune échéance.</div></div>
+<div class="card"><h2>⏰ Rappels</h2><div id="reminderSummary" class="notify ok">Aucun rappel en attente.</div><div id="reminders" class="muted" style="margin-top:10px">Aucune échéance.</div><div class="muted" style="margin-top:10px">Les rappels sont calculés localement à chaque ouverture de l'application. Si tu ne l'ouvres pas pendant quelques jours, les échéances dépassées apparaissent comme <b>en retard</b> à ton retour.</div></div>
 <div class="card"><h2>Mes pièces <span id="pieceCount" class="badge">0</span></h2>
 <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
 <div class="notice"><b id="statActive">0</b><br><span class="muted">En cours</span></div>
@@ -172,6 +172,7 @@ function normalizePiece(p){
   p.weighings=Array.isArray(p.weighings)&&p.weighings.length?p.weighings:[{date:p.date||today(),weight:Number(p.weight)||0}];
   p.weighIntervalDays=Math.max(1,Number(p.weighIntervalDays)||7);
   p.notificationLog=p.notificationLog||{};
+  p.finalPhoto=p.finalPhoto||null;
   if(!p.nextWeighingDate)p.nextWeighingDate=addDays(p.weighings.at(-1)?.date||p.date,p.weighIntervalDays);
   if(p.dryingStarted===undefined)p.dryingStarted=!!p.dryingStartWeight;
   p.completed=!!p.completed;
@@ -182,67 +183,52 @@ pieces=pieces.map(normalizePiece);
 $('date').value=today();
 $('firstWeighDate').value='';
 
-function notificationSupported(){return 'Notification' in window}
-async function requestNotifications(){
-  if(!notificationSupported()){
-    alert('Les notifications ne sont pas prises en charge par ce navigateur.');
-    return;
-  }
-  try{
-    let permission=await Notification.requestPermission();
-    updateNotificationStatus();
-    if(permission==='granted'){
-      checkNotifications(true);
-      new Notification("Charcut' Tracker",{body:'🔔 Notifications activées sur cet appareil.',icon:'./icon.svg',tag:'charcut-test'});
-    }
-  }catch(e){alert('Impossible d’activer les notifications dans ce navigateur.')}
-}
-function updateNotificationStatus(){
-  let el=$('notificationStatus');if(!el)return;
-  if(!notificationSupported()){
-    el.className='notify warn';el.textContent='Les notifications ne sont pas prises en charge par ce navigateur.';return;
-  }
-  if(Notification.permission==='granted'){
-    el.className='notify ok';el.textContent='🔔 Notifications navigateur activées sur cet appareil.';
-  }else if(Notification.permission==='denied'){
-    el.className='notify warn';el.textContent='🔕 Notifications bloquées. Autorise-les dans les réglages du navigateur.';
-  }else{
-    el.className='notify warn';el.textContent='Les notifications ne sont pas encore activées.';
-  }
-}
-function notifyOnce(p,type,date,message){
-  p.notificationLog=p.notificationLog||{};
-  let key=type+'_'+date;
-  if(p.notificationLog[key])return false;
-  if(notificationSupported()&&Notification.permission==='granted'){
-    try{
-      new Notification("Charcut' Tracker",{body:message,icon:'./icon.svg',tag:key});
-      p.notificationLog[key]=new Date().toISOString();
-      return true;
-    }catch(e){return false}
-  }
-  return false;
-}
-function checkNotifications(){
-  updateNotificationStatus();
-  let now=today(),changed=false;
+function reminderItems(){
+  const now=today(),items=[];
   for(const p of pieces){
     normalizePiece(p);
     if(p.completed)continue;
-    if(p.deadline&&!p.dryingStarted&&now>=p.deadline){
-      let msg=now===p.deadline
-        ?`🧂 ${p.name} arrive à la fin prévue de sa salaison aujourd’hui.`
-        :`🧂 ${p.name} a dépassé sa date de fin de salaison (${formatDate(p.deadline)}).`;
-      if(notifyOnce(p,'salting',p.deadline,msg))changed=true;
-    }
-    if(p.nextWeighingDate&&now>=p.nextWeighingDate){
-      let msg=now===p.nextWeighingDate
-        ?`⚖️ C’est le moment de peser ${p.name}.`
-        :`⚖️ La pesée de ${p.name} est en retard depuis le ${formatDate(p.nextWeighingDate)}.`;
-      if(notifyOnce(p,'weighing',p.nextWeighingDate,msg))changed=true;
+    if(p.dryingStarted){
+      const targetW=p.dryingStartWeight&&p.dryTarget?p.dryingStartWeight*(1-p.dryTarget/100):null;
+      const current=p.weighings.at(-1)?.weight;
+      const loss=(p.dryingStartWeight&&current)?pct(p,current):0;
+      if(targetW&&loss>=p.dryTarget){
+        items.push({p,date:now,type:'target',priority:0,html:`<b>${esc(p.name)}</b> — 🎯 objectif de séchage atteint<br><small class="muted">Tu peux terminer la pièce${p.finalPhoto?' et la photo finale est enregistrée':' ou ajouter une photo finale'}.</small>`});
+      }else if(p.nextWeighingDate){
+        const late=daysBetween(p.nextWeighingDate,now);
+        items.push({p,date:p.nextWeighingDate,type:'weighing',priority:late>0?1:2,late,html:late>0
+          ?`<b>${esc(p.name)}</b> — 🔴 pesée en retard de ${late} j<br><small class="muted">Prévue le ${formatDate(p.nextWeighingDate)}</small>`
+          :late===0
+            ?`<b>${esc(p.name)}</b> — ⚖️ pesée à faire aujourd’hui<br><small class="muted">Tous les ${p.weighIntervalDays} j</small>`
+            :`<b>${esc(p.name)}</b> — ⚖️ prochaine pesée le ${formatDate(p.nextWeighingDate)}<br><small class="muted">Dans ${Math.abs(late)} j</small>`});
+      }
+    }else if(p.deadline){
+      const late=daysBetween(p.deadline,now);
+      items.push({p,date:p.deadline,type:'salting',priority:late>0?1:late===0?0:3,late,html:late>0
+        ?`<b>${esc(p.name)}</b> — 🔴 fin de salaison dépassée de ${late} j<br><small class="muted">Prévue le ${formatDate(p.deadline)}</small>`
+        :late===0
+          ?`<b>${esc(p.name)}</b> — 🧂 fin de salaison aujourd’hui<br><small class="muted">Pense à enregistrer la sortie de salaison.</small>`
+          :`<b>${esc(p.name)}</b> — 🧂 fin de salaison le ${formatDate(p.deadline)}<br><small class="muted">Dans ${Math.abs(late)} j</small>`});
     }
   }
-  if(changed)localStorage.setItem('charcutPieces',JSON.stringify(pieces));
+  return items.sort((a,b)=>a.priority-b.priority||a.date.localeCompare(b.date)||String(a.p.name).localeCompare(String(b.p.name)));
+}
+function renderReminders(){
+  const items=reminderItems(),todayItems=items.filter(x=>x.priority<=2 && (x.date<=today() || x.type==='target')),late=items.filter(x=>x.late>0);
+  const summary=$('reminderSummary');
+  if(summary){
+    if(late.length||items.some(x=>x.type==='target')){
+      summary.className='notify warn';
+      summary.innerHTML=`🔔 <b>${late.length+(items.some(x=>x.type==='target')?1:0)} action${late.length+(items.some(x=>x.type==='target')?1:0)>1?'s':''} à regarder</b>`;
+    }else if(todayItems.length){
+      summary.className='notify warn';summary.innerHTML=`🔔 <b>${todayItems.length} rappel${todayItems.length>1?'s':''} aujourd'hui</b>`;
+    }else{
+      summary.className='notify ok';summary.textContent='✅ Aucun rappel en attente.';
+    }
+  }
+  const box=$('reminders');
+  if(!box)return;
+  box.innerHTML=items.length?items.slice(0,12).map(r=>`<div style="padding:8px 0;border-bottom:1px solid #eee">${r.html}</div>`).join(''):'<span class="muted">Aucune échéance enregistrée.</span>';
 }
 function showTab(tab){
   ['dash','pieces','new','recipes','safety','detail'].forEach(x=>{
@@ -315,16 +301,7 @@ function render(){
   $('statDone').textContent=pieces.filter(p=>p.completed).length;
   $('pieceCount').textContent=pieces.length+' pièce'+(pieces.length>1?'s':'');
 
-  let reminders=[];
-  pieces.forEach(p=>{
-    if(p.completed)return;
-    if(p.deadline&&!p.dryingStarted)reminders.push({date:p.deadline,html:`<b>${esc(p.name)}</b> — ${reminderText(p)}<br><small class="muted">Fin de salaison</small>`});
-    if(p.nextWeighingDate)reminders.push({date:p.nextWeighingDate,html:`<b>${esc(p.name)}</b> — ⚖️ ${formatDate(p.nextWeighingDate)}<br><small class="muted">Prochaine pesée — tous les ${p.weighIntervalDays} j</small>`});
-  });
-  reminders.sort((a,b)=>a.date.localeCompare(b.date));
-  $('reminders').innerHTML=reminders.length
-    ?reminders.slice(0,10).map(r=>`<div style="padding:8px 0;border-bottom:1px solid #eee">${r.html}</div>`).join('')
-    :'<span class="muted">Aucune échéance enregistrée.</span>';
+  renderReminders();
 
   let search=($('pieceSearch')?.value||'').trim().toLowerCase();
   let filter=$('pieceFilter')?.value||'active';
@@ -397,6 +374,12 @@ function openPiece(id){
   <h3>Courbe de poids</h3><canvas id="chart" width="900" height="240"></canvas>
   <h3>Historique</h3><table><tr><th>Date</th><th>Poids</th><th>Perte séchage</th></tr>
   ${sorted.slice().reverse().map(x=>`<tr><td>${formatDate(x.date)}</td><td>${x.weight} g</td><td>${p.dryingStarted?pct(p,x.weight).toFixed(1)+' %':'—'}</td></tr>`).join('')}</table>
+  <h3>📸 Photo finale</h3>
+  <p class="muted">Facultative. La photo est redimensionnée et conservée uniquement dans les données locales de cette pièce.</p>
+  ${p.finalPhoto?`<img src="${p.finalPhoto}" alt="Photo finale de ${esc(p.name)}" style="width:100%;max-height:420px;object-fit:contain;border-radius:12px;background:#f4f1ec;display:block">
+  <div class="actions"><button class="secondary" onclick="chooseFinalPhoto(${p.id})">📸 Remplacer la photo</button><button class="secondary" onclick="removeFinalPhoto(${p.id})">🗑️ Supprimer la photo</button></div>`:
+  `<button class="secondary" onclick="chooseFinalPhoto(${p.id})">📸 Prendre / ajouter une photo finale</button>`}
+  <input id="finalPhotoInput" type="file" accept="image/*" capture="environment" class="hidden" onchange="saveFinalPhoto(event,${p.id})">
   <h3>Assaisonnement</h3><p>${esc(p.season)||'—'}</p><p class="muted">${esc(p.notes)||''}</p>
   <button class="secondary" onclick="deletePiece(${p.id})">🗑️ Supprimer la pièce</button>
   </div>`;
@@ -426,6 +409,7 @@ function updatePieceSettings(id){
     p.nextWeighingDate=$('editNextWeigh').value||addDays(p.weighings.at(-1).date,p.weighIntervalDays);
   }
   p.notificationLog=p.notificationLog||{};
+  p.finalPhoto=p.finalPhoto||null;
   save('✅ Modifications enregistrées');openPiece(id);
 }
 function weigh(id){
@@ -436,6 +420,7 @@ function weigh(id){
   p.weighIntervalDays=Math.max(1,p.weighIntervalDays||7);
   p.nextWeighingDate=addDays(date,p.weighIntervalDays);
   p.notificationLog=p.notificationLog||{};
+  p.finalPhoto=p.finalPhoto||null;
   save('✅ Pesée enregistrée');openPiece(id);
 }
 function startDrying(id){
@@ -455,6 +440,7 @@ function startDrying(id){
   p.weighIntervalDays=Math.max(1,p.weighIntervalDays||7);
   p.nextWeighingDate=addDays(date,p.weighIntervalDays);
   p.notificationLog=p.notificationLog||{};
+  p.finalPhoto=p.finalPhoto||null;
   save('✅ Sortie de salaison enregistrée');openPiece(id);
 }
 
@@ -466,6 +452,36 @@ function markDryingDone(id){
   save('✅ Séchage mis à jour');openPiece(id);
 }
 
+function chooseFinalPhoto(id){
+  const input=$('finalPhotoInput');
+  if(input){input.dataset.pieceId=id;input.click();}
+}
+function saveFinalPhoto(event,id){
+  const file=event.target.files?.[0];
+  if(!file)return;
+  if(!file.type.startsWith('image/'))return alert('Choisis une image.');
+  const reader=new FileReader();
+  reader.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{
+      const max=1200,scale=Math.min(1,max/Math.max(img.width,img.height));
+      const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));
+      const ctx=c.getContext('2d');ctx.drawImage(img,0,0,c.width,c.height);
+      const data=c.toDataURL('image/jpeg',.78);
+      const p=pieces.find(x=>x.id===id);if(!p)return;
+      p.finalPhoto=data;
+      try{save('📸 Photo finale enregistrée');openPiece(id);}catch(e){p.finalPhoto=null;alert('La photo est trop volumineuse pour être conservée localement.');}
+    };
+    img.onerror=()=>alert('Impossible de lire la photo.');
+    img.src=reader.result;
+  };
+  reader.readAsDataURL(file);
+  event.target.value='';
+}
+function removeFinalPhoto(id){
+  const p=pieces.find(x=>x.id===id);if(!p)return;
+  if(confirm('Supprimer la photo finale de cette pièce ?')){p.finalPhoto=null;save('🗑️ Photo finale supprimée');openPiece(id);}
+}
 function completePiece(id){
   let p=pieces.find(x=>x.id===id);if(!p)return;
   p.completed=true;p.completedDate=today();p.nextWeighingDate=null;
@@ -514,7 +530,7 @@ function populateRecipes(){
   $('recipe').innerHTML='<option value="">— recette libre —</option>'+recipes.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('');
 }
 function exportData(){
-  let data={pieces,recipes,version:6.2,exportedAt:new Date().toISOString()};
+  let data={pieces,recipes,version:6.4,exportedAt:new Date().toISOString()};
   let b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   let a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='charcut-tracker-sauvegarde-v6.json';a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
@@ -533,8 +549,7 @@ function importData(e){
   };
   r.readAsText(f);
 }
-render();renderRecipes();populateRecipes();updateNotificationStatus();checkNotifications();
-setInterval(checkNotifications,60000);
+render();renderRecipes();populateRecipes();
 </script>
 <script>
 if ('serviceWorker' in navigator) {
