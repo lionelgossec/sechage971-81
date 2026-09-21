@@ -1,4 +1,4 @@
-const CACHE='charcut-tracker-v6-4';
+const CACHE='charcut-tracker-v6-4-2';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
