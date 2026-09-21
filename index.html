@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#2f2924"><meta name="description" content="Suivi des salaisons, séchages, recettes et pertes de poids."><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml">
-<title>Charcut' Tracker V6.4</title>
+<title>Charcut' Tracker V6.4.1</title>
 <style>
 body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f4f1ec;color:#27231f}
 header{background:#2f2924;color:white;padding:22px 18px}h1{margin:0 0 5px;font-size:26px}header p{margin:0;opacity:.8}
@@ -151,12 +151,15 @@ function daysBetween(a,b){
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 let toastTimer=null;
 function showToast(message){
-  const el=$('toast');
+  if(!message)return;
+  const el=document.getElementById('toast');
   if(!el)return;
-  el.textContent=message;
+  el.textContent=String(message);
+  el.classList.remove('show');
+  void el.offsetWidth;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>el.classList.remove('show'),2200);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2400);
 }
 function save(message){
   localStorage.setItem('charcutPieces',JSON.stringify(pieces));
