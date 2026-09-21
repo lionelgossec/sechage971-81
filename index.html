@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#2f2924"><meta name="description" content="Suivi des salaisons, séchages, recettes et pertes de poids."><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml">
-<title>Charcut' Tracker V6.4.1</title>
+<title>Charcut' Tracker V6.4</title>
 <style>
 body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f4f1ec;color:#27231f}
 header{background:#2f2924;color:white;padding:22px 18px}h1{margin:0 0 5px;font-size:26px}header p{margin:0;opacity:.8}
@@ -151,21 +151,19 @@ function daysBetween(a,b){
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 let toastTimer=null;
 function showToast(message){
-  if(!message)return;
-  const el=document.getElementById('toast');
+  const el=$('toast');
   if(!el)return;
-  el.textContent=String(message);
-  el.classList.remove('show');
-  void el.offsetWidth;
+  el.textContent=message;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>el.classList.remove('show'),2400);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2200);
 }
 function save(message){
   localStorage.setItem('charcutPieces',JSON.stringify(pieces));
   localStorage.setItem('charcutRecipes',JSON.stringify(recipes));
   render();renderRecipes();populateRecipes();
   if(message)showToast(message);
+  setTimeout(()=>window.scrollTo({top:0,behavior:'smooth'}),40);
 }
 function normalizePiece(p){
   p.saltThickness=p.saltThickness||null;
@@ -253,7 +251,6 @@ function addPiece(){
   if(!w)return alert('Indique le poids initial.');
   const startDate=$('date').value||today();
   const name=$('name').value.trim()||$('type').value+' #'+(pieces.length+1);
-  let rec=recipes.find(r=>String(r.id)===$('recipe').value);
   let duration=Math.max(0,+$('duration').value||0);
   let deadline=$('deadline').value;
   if(duration&&!deadline)deadline=addDays(startDate,duration);
@@ -520,7 +517,9 @@ function addRecipe(){
   save('✅ Recette enregistrée');['rname','rtype','ring','rnotes'].forEach(x=>$(x).value='')
 }
 function renderRecipes(){
-  $('recipeList').innerHTML=recipes.length?recipes.map(r=>`<div class="recipe"><h4>${esc(r.name)} <span class="badge">${esc(r.type||'')}</span></h4>
+  const el=$('recipeList');
+  if(!el)return;
+  el.innerHTML=recipes.length?recipes.map(r=>`<div class="recipe"><h4>${esc(r.name)} <span class="badge">${esc(r.type||'')}</span></h4>
   <div>${esc(r.ingredients).replace(/\n/g,'<br>')}</div><small class="muted">${esc(r.notes)}</small>
   <button class="secondary" onclick="deleteRecipe(${r.id})">Supprimer</button></div>`).join(''):'<p class="muted">Aucune recette.</p>';
 }
@@ -530,10 +529,12 @@ function deleteRecipe(id){
   if(confirm(msg)){recipes=recipes.filter(r=>r.id!==id);save('✅ Recette supprimée')}
 }
 function populateRecipes(){
-  $('recipe').innerHTML='<option value="">— recette libre —</option>'+recipes.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('');
+  const el=$('recipe');
+  if(!el)return;
+  el.innerHTML='<option value="">— recette libre —</option>'+recipes.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('');
 }
 function exportData(){
-  let data={pieces,recipes,version:6.4,exportedAt:new Date().toISOString()};
+  let data={pieces,recipes,version:6.43,exportedAt:new Date().toISOString()};
   let b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   let a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='charcut-tracker-sauvegarde-v6.json';a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
