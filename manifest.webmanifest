@@ -1,7 +1,7 @@
 {
-  "name": "Charcut’ Tracker",
-  "short_name": "Charcut’ Tracker",
-  "id": "./?app=charcut-v65-secure",
+  "name": "Charcut’ Tracker V6.6",
+  "short_name": "Charcut’ Tracker V6.6",
+  "id": "./?app=charcut-v66-secure",
   "description": "Suivi des salaisons, séchages, recettes, pesées, rappels et objectifs.",
   "start_url": "./",
   "scope": "./",

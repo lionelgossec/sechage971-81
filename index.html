@@ -40,7 +40,7 @@ canvas{width:100%;height:220px;border:1px solid #eee;border-radius:10px}.tabs{di
 </style>
 </head>
 <body><div id="toast" class="toast" role="status" aria-live="polite"></div>
-<header><h1>🥩 Charcut' Tracker</h1><p>Suivi des salaisons, séchages, recettes, pesées, rappels et objectifs</p></header>
+<header><h1>🥩 Charcut' Tracker <span class="badge">V6.6</span></h1><p>Suivi des salaisons, séchages, recettes, pesées, rappels et objectifs</p></header>
 <main>
 <div class="tabs">
 <button id="tabDash" class="active" onclick="showTab('dash')">📊 Tableau de bord</button>
@@ -223,6 +223,8 @@ function normalizePiece(p){
   p.finalPhoto=p.finalPhoto||null;
   if(!p.nextWeighingDate)p.nextWeighingDate=addDays(p.weighings.at(-1)?.date||p.date,p.weighIntervalDays);
   if(p.dryingStarted===undefined)p.dryingStarted=!!p.dryingStartWeight;
+  if(p.dryingStarted && !p.dryingStartWeight && p.weighings.length>1) p.dryingStartWeight=Number(p.weighings[1].weight)||null;
+  if(p.dryingStarted && !p.dryingStartDate && p.weighings.length>1) p.dryingStartDate=p.weighings[1].date||null;
   p.completed=!!p.completed;
   return p;
 }
@@ -361,15 +363,16 @@ function render(){
   if(!pieces.length){$('dashboard').innerHTML='<span class="muted">Aucune pièce enregistrée.</span>';return}
   if(!visible.length){$('dashboard').innerHTML='<span class="muted">Aucune pièce ne correspond au filtre.</span>';return}
 
-  $('dashboard').innerHTML='<table><tr><th>Pièce</th><th>Départ</th><th>Actuel</th><th>Séchage</th><th>Étape</th><th>Prochain rappel</th><th></th></tr>'+
+  $('dashboard').innerHTML='<table><tr><th>Pièce</th><th>Initial</th><th>P0 séchage</th><th>Actuel</th><th>% séchage</th><th>Étape</th><th>Prochain rappel</th><th></th></tr>'+
     visible.map(p=>{
       let w=p.weighings.at(-1).weight;
+      let p0=p.dryingStarted?p.dryingStartWeight:null;
       let loss=p.dryingStarted?pct(p,w):null;
       let stage=p.completed?'✅ Terminée':p.dryingStarted?'🌬️ Séchage':'🧂 Salaison';
       let next=p.completed?'—':(p.dryingStarted?p.nextWeighingDate:p.deadline);
       let reminderLabel=p.completed?'':(p.dryingStarted?'Pesée':'Fin salaison');
       return `<tr><td><b>${esc(p.name)}</b><br><span class="badge">${esc(p.type)}</span></td>
-      <td>${p.weight} g</td><td>${w} g</td><td>${loss===null?'—':loss.toFixed(1)+' %'}</td>
+      <td>${p.weight} g</td><td>${p0?p0+' g':'—'}</td><td>${w} g</td><td>${loss===null?'—':loss.toFixed(1)+' %'}</td>
       <td>${stage}</td><td>${next?formatDate(next):'—'}<br><small>${reminderLabel}</small></td>
       <td><button onclick="openPiece(${p.id})">Ouvrir</button></td></tr>`;
     }).join('')+'</table>';
@@ -387,16 +390,29 @@ function openPiece(id){
     <button class="secondary" onclick="showTab('pieces')">🥩 Toutes les pièces</button>
   </div>
   <h2>${esc(p.name)} <span class="badge">${esc(p.type)}</span> ${p.completed?'<span class="badge">✅ Terminée</span>':''}</h2>
-  <div class="grid"><div><div class="big">${w} g</div><div class="muted">poids actuel</div></div>
-  <div><div class="big">${loss===null?'—':loss.toFixed(1)+' %'}</div><div class="muted">perte depuis le début du séchage</div></div></div>
+  <div class="grid"><div><div class="big">${p.weight} g</div><div class="muted">poids initial</div></div>
+  <div><div class="big">${p.dryingStartWeight?p.dryingStartWeight+' g':'—'}</div><div class="muted">P0 — début du séchage</div></div>
+  <div><div class="big">${w} g</div><div class="muted">poids actuel</div></div>
+  <div><div class="big">${loss===null?'—':loss.toFixed(1)+' %'}</div><div class="muted">% séchage depuis P0</div></div></div>
   <p><b>🧂 Salaison :</b> ${esc(p.method)}<br><b>Début :</b> ${formatDate(p.date)}<br>
   <b>Épaisseur :</b> ${p.saltThickness?p.saltThickness+' cm':'—'}<br>
   <b>Durée prévue :</b> ${p.duration?p.duration+' jours':'—'}<br><b>Sortie prévue :</b> ${p.deadline?formatDate(p.deadline):'—'}<br>
   <b>Rappel actuel :</b> ${p.completed?'—':p.dryingStarted?(p.nextWeighingDate?'⚖️ Prochaine pesée le '+formatDate(p.nextWeighingDate):'⚖️ Pesée à programmer'):(p.deadline?'🧂 Fin de salaison le '+formatDate(p.deadline):'—')}<br>
   <b>Recette / assaisonnement :</b> ${esc(recipe?.name||'Libre')}</p>
   ${p.saltProtocol?`<div class="notice"><b>📝 Protocole retenu</b><br>${esc(p.saltProtocol).replace(/\n/g,'<br>')}</div>`:''}
+  <div class="card" style="margin-top:12px">
+    <h3>✏️ Modifier la fiche</h3>
+    <div class="row"><div><label>Nom de la pièce</label><input id="editName" value="${esc(p.name)}"></div><div><label>Type</label><input id="editType" value="${esc(p.type)}"></div></div>
+    <div class="row"><div><label>Poids initial (g)</label><input id="editInitialWeight" type="number" min="1" value="${p.weight||''}"></div><div><label>Date de départ</label><input id="editStartDate" type="date" value="${p.date||''}"></div></div>
+    <div class="row"><div><label>Méthode de salaison</label><input id="editMethod" value="${esc(p.method||'')}"></div><div><label>Épaisseur max (cm)</label><input id="editSaltThickness" type="number" min="0" step="0.1" value="${p.saltThickness||''}"></div></div>
+    <label>Protocole / résultat retenu</label><textarea id="editSaltProtocol" rows="3">${esc(p.saltProtocol||'')}</textarea>
+    <div class="row"><div><label>Objectif de séchage (%)</label><input id="editDryTarget" type="number" min="0" max="99" step=".1" value="${p.dryTarget||''}"></div><div><label>Notes</label><textarea id="editNotes" rows="2">${esc(p.notes||'')}</textarea></div></div>
+    <label>Recette / assaisonnement</label><select id="editRecipe">${'<option value="">— assaisonnement libre —</option>'}${recipes.map(r=>`<option value="${r.id}" ${String(r.id)===String(p.recipeId)?'selected':''}>${esc(r.name)}</option>`).join('')}</select>
+    <label>Assaisonnement / finition</label><textarea id="editSeason" rows="3" placeholder="Épices, herbes, alcool, finition…">${esc(p.season||'')}</textarea>
+    <button class="secondary" onclick="updatePieceDetails(${p.id})">💾 Enregistrer la fiche</button>
+  </div>
   ${!p.dryingStarted&&!p.completed?`<div class="notice"><b>🧂 Salaison en cours</b><br>La pesée n'est pas proposée à cette étape. Au moment de sortir la pièce, tu saisiras son poids réel pour démarrer le séchage.</div>`:''}
-  <div class="notice"><b>🌬️ Séchage</b><br>Poids de référence : ${p.dryingStartWeight?p.dryingStartWeight+' g':'pas encore défini'}<br>
+  <div class="notice"><b>🌬️ Séchage</b><br>P0 — début du séchage : ${p.dryingStartWeight?p.dryingStartWeight+' g':'pas encore défini'}${p.dryingStartDate?' le '+formatDate(p.dryingStartDate):''}<br>
   Objectif : ${p.dryTarget?p.dryTarget+' % de perte':'à définir'}<br>
   Poids cible : ${targetW?targetW.toFixed(0)+' g':'—'}${targetW&&loss>=p.dryTarget?' — 🎯 Objectif atteint':''}</div>
   <div class="row"><div><label>Modifier la durée de salaison (jours)</label><input id="editDuration" type="number" min="1" value="${p.duration||''}"></div>
@@ -411,6 +427,7 @@ function openPiece(id){
           <h3>🌿 Assaisonnement — à la sortie de salaison</h3>
           <label>Recette</label><select id="exitRecipe">${'<option value="">— assaisonnement libre —</option>'}${recipes.map(r=>`<option value="${r.id}" ${String(r.id)===String(p.recipeId)?'selected':''}>${esc(r.name)}</option>`).join('')}</select>
           <label>Assaisonnement / finition</label><textarea id="exitSeason" rows="3" placeholder="Épices, herbes, alcool, finition…">${esc(p.season)}</textarea>
+          <label>Date de sortie de salaison</label><input id="exitDate" type="date" value="${p.dryingStartDate||today()}">
           <button onclick="startDrying(${p.id})">🌬️ Sortir de salaison, enregistrer le poids et démarrer le séchage</button>
         </div>`
       :'<button class="secondary" onclick="markDryingDone('+p.id+')">🔄 Refaire la référence de séchage avec la dernière pesée</button>'}
@@ -446,6 +463,26 @@ function drawChart(p){
   ctx.font='12px system-ui';ctx.fillText(max.toFixed(0)+' g',5,pad);ctx.fillText(min.toFixed(0)+' g',5,H-pad);
   ctx.fillText(a[0].date,pad,H-12);ctx.fillText(a.at(-1).date,W-100,H-12);
 }
+function updatePieceDetails(id){
+  const p=pieces.find(x=>x.id===id);if(!p)return;
+  const name=$('editName').value.trim(), type=$('editType').value.trim();
+  const weight=+$('editInitialWeight').value;
+  const date=$('editStartDate').value;
+  if(!name)return alert('Indique un nom de pièce.');
+  if(!type)return alert('Indique un type de pièce.');
+  if(!weight||weight<=0)return alert('Indique un poids initial valide.');
+  if(!date)return alert('Indique une date de départ.');
+  p.name=name;p.type=type;p.weight=weight;p.date=date;
+  p.method=$('editMethod').value.trim();
+  p.saltThickness=+$('editSaltThickness').value||null;
+  p.saltProtocol=$('editSaltProtocol').value.trim();
+  p.dryTarget=+$('editDryTarget').value||null;
+  p.notes=$('editNotes').value;
+  p.recipeId=$('editRecipe').value||null;
+  p.season=$('editSeason').value.trim();
+  p.notificationLog=p.notificationLog||{};
+  save('✅ Fiche modifiée');openPiece(id);
+}
 function updatePieceSettings(id){
   let p=pieces.find(x=>x.id===id);if(!p)return;
   let dur=Math.max(0,+$('editDuration').value||0),dl=$('editDeadline').value;
@@ -480,8 +517,8 @@ function startDrying(id){
   let w=prompt('Poids réel à la sortie de salaison (g) :',current);
   if(w===null)return;
   w=Number(w);if(!w||w<=0)return alert('Indique un poids de sortie valide.');
-  let date=prompt('Date de sortie de salaison (AAAA-MM-JJ) :',today());
-  if(!date)return;
+  const date=$('exitDate')?.value||today();
+  if(!date)return alert('Indique une date de sortie de salaison.');
   p.weighings.push({date,weight:w});
   p.dryingStartWeight=w;p.dryingStartDate=date;p.dryingStarted=true;
   p.weighIntervalDays=Math.max(1,p.weighIntervalDays||7);
